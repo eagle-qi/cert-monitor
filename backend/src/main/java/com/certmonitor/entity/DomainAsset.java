@@ -31,6 +31,9 @@ public class DomainAsset {
     @Column(length = 500)
     private String tags;
     
+    @Column(length = 500)
+    private String description;
+    
     @Column(nullable = false)
     private Integer status = 1;
     

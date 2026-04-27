@@ -16,6 +16,9 @@ public class AlertRecord {
     @Column(name = "asset_id")
     private Long assetId;
     
+    @Column(name = "cert_id")
+    private Long certId;
+    
     @Column(name = "alert_type", length = 20)
     private String alertType;
     
@@ -26,16 +29,27 @@ public class AlertRecord {
     private String title;
     
     @Column(columnDefinition = "TEXT")
-    private String message;
+    private String content;
+    
+    @Column(name = "alert_status")
+    private Integer alertStatus = 0;
     
     @Column(name = "is_read")
     private Integer isRead = 0;
     
+    @Column(name = "alert_time")
+    private LocalDateTime alertTime;
+    
     @Column(name = "send_time")
     private LocalDateTime sendTime;
     
+    @Column(name = "create_time")
+    private LocalDateTime createTime;
+    
     @PrePersist
     protected void onCreate() {
-        sendTime = LocalDateTime.now();
+        createTime = LocalDateTime.now();
+        if (alertTime == null) alertTime = LocalDateTime.now();
+        if (sendTime == null) sendTime = LocalDateTime.now();
     }
 }

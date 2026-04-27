@@ -21,6 +21,9 @@ public interface ScanResultRepository extends JpaRepository<ScanResult, Long> {
     
     long countByIsAccessible(Integer isAccessible);
     
+    @Query("SELECT s FROM ScanResult s WHERE s.isAccessible = 0 ORDER BY s.scanTime DESC")
+    List<ScanResult> findRecentFailedScans(Pageable pageable);
+    
     @Query("SELECT COUNT(s) FROM ScanResult s WHERE s.isAccessible = 0 AND s.scanTime >= :since")
     long countFailedScansSince(LocalDateTime since);
     

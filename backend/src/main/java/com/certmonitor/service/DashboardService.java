@@ -1,139 +1,75 @@
 package com.certmonitor.service;
 
-import com.certmonitor.entity.SslCertInfo;
-import com.certmonitor.repository.SslCertInfoRepository;
-import lombok.extern.slf4j.Slf4j;
+import com.certmonitor.entity.*;
+import com.certmonitor.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
+import org.springframework.data.domain.PageRequest;
 
-@Slf4j
+import java.util.*;
+
 @Service
 public class DashboardService {
-    
+
+    @Autowired
+    private DomainAssetRepository domainAssetRepository;
+    @Autowired
+    private SslCertInfoRepository sslCertInfoRepository;
+    @Autowired
+    private AlertRecordRepository alertRecordRepository;
+    @Autowired
+    private ScanResultRepository scanResultRepository;
     @Autowired
     private AssetService assetService;
-    
-    @Autowired
-    private ScanService scanService;
-    
-    @Autowired
-    private CertService certService;
-    
     @Autowired
     private AlertService alertService;
-    
-    @Autowired
-    private SslCertInfoRepository certRepository;
-    
-    /**
-     * 获取大盘统计数据
-     */
+
     public Map<String, Object> getDashboardStats() {
         Map<String, Object> stats = new HashMap<>();
-        
-        // 资产统计
-        stats.put("totalAssets", assetService.countEnabled());
-        
-        // 扫描统计
-        Map<String, Object> scanStats = scanService.getStats();
-        stats.put("accessibleRate", scanStats.get("accessibleRate"));
-        stats.put("failed24h", scanStats.get("failed24h"));
-        
-        // 证书统计
-        Map<String, Object> certStats = certService.getStats();
-        stats.put("totalCerts", certStats.get("total"));
-        stats.put("normalCerts", certStats.get("normal"));
-        stats.put("warningCerts", certStats.get("warning"));
-        stats.put("dangerCerts", certStats.get("danger"));
-        stats.put("expiredCerts", certStats.get("expired"));
-        
-        // 告警统计
+        stats.put("totalAssets", domainAssetRepository.count());
+        stats.put("enabledAssets", assetService.countEnabled());
+        stats.put("disabledAssets", assetService.countDisabled());
+        stats.put("normalCerts", sslCertInfoRepository.countByRiskLevel(0));
+        stats.put("warningCerts", sslCertInfoRepository.countByRiskLevel(1));
+        stats.put("criticalCerts", sslCertInfoRepository.countByRiskLevel(2));
+        stats.put("expiredCerts", sslCertInfoRepository.countByRiskLevel(3));
         stats.put("unreadAlerts", alertService.getUnreadCount());
-        
+        stats.put("accessibleUrls", scanResultRepository.countByIsAccessible(1));
+        stats.put("unaccessibleUrls", scanResultRepository.countByIsAccessible(0));
         return stats;
     }
-    
-    /**
-     * 获取证书风险分布（饼图数据）
-     */
-    public List<Map<String, Object>> getCertRiskDistribution() {
-        List<Map<String, Object>> data = new ArrayList<>();
-        Map<String, Object> certStats = certService.getStats();
-        
-        data.add(createPieItem("正常 (>30天)", (long) certStats.get("normal"), "#67C23A"));
-        data.add(createPieItem("预警 (15-30天)", (long) certStats.get("warning"), "#E6A23C"));
-        data.add(createPieItem("高危 (1-15天)", (long) certStats.get("danger"), "#F56C6C"));
-        data.add(createPieItem("已过期", (long) certStats.get("expired"), "#909399"));
-        
-        return data;
-    }
-    
-    /**
-     * 获取证书过期趋势数据
-     */
-    public List<Map<String, Object>> getCertExpiryTrend() {
-        List<Map<String, Object>> data = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
-        
-        // 模拟最近7天的趋势数据
-        for (int i = 6; i >= 0; i--) {
-            Map<String, Object> point = new HashMap<>();
-            LocalDateTime date = now.minusDays(i);
-            point.put("date", date.toLocalDate().toString());
-            point.put("warning", (long) (Math.random() * 10 + 5));
-            point.put("danger", (long) (Math.random() * 5 + 1));
-            point.put("expired", (long) (Math.random() * 3));
-            data.add(point);
+
+    public List<Map<String, Object>> getCertTrend() {
+        List<Map<String, Object>> trend = new ArrayList<>();
+        // 简化：返回近7天的过期证书统计
+        for (int i = 30; i >= 0; i--) {
+            Map<String, Object> day = new HashMap<>();
+            day.put("date", java.time.LocalDate.now().minusDays(i).toString());
+            day.put("expired", sslCertInfoRepository.countByRiskLevel(3));
+            trend.add(day);
         }
-        
-        return data;
+        return trend;
     }
-    
-    /**
-     * 获取即将过期的证书列表
-     */
-    public List<SslCertInfo> getExpiringCerts(int days, Pageable pageable) {
-        List<SslCertInfo> allExpiring = certService.getExpiringCerts(days);
-        int start = (int) pageable.getOffset();
-        int end = Math.min(start + pageable.getPageSize(), allExpiring.size());
-        
-        if (start >= allExpiring.size()) {
-            return Collections.emptyList();
-        }
-        
-        return allExpiring.subList(start, end);
+
+    public List<Map<String, Object>> getUrlStatusDistribution() {
+        List<Map<String, Object>> dist = new ArrayList<>();
+        Map<String, Object> accessible = new HashMap<>();
+        accessible.put("name", "可访问");
+        accessible.put("value", scanResultRepository.countByIsAccessible(1));
+        dist.add(accessible);
+        Map<String, Object> unaccessible = new HashMap<>();
+        unaccessible.put("name", "不可访问");
+        unaccessible.put("value", scanResultRepository.countByIsAccessible(0));
+        dist.add(unaccessible);
+        return dist;
     }
-    
-    /**
-     * 获取业务分组统计
-     */
-    public List<Map<String, Object>> getBusinessGroupStats() {
-        List<Map<String, Object>> data = new ArrayList<>();
-        
-        List<String> groups = assetService.getBusinessGroups();
-        for (String group : groups) {
-            Map<String, Object> item = new HashMap<>();
-            item.put("name", group);
-            item.put("assets", assetService.listEnabled().stream()
-                    .filter(a -> group.equals(a.getBusinessGroup()))
-                    .count());
-            data.add(item);
-        }
-        
-        return data;
+
+    public List<SslCertInfo> getTopRiskCerts() {
+        return sslCertInfoRepository.findTopRiskCerts(PageRequest.of(0, 10));
     }
-    
-    private Map<String, Object> createPieItem(String name, long value, String color) {
-        Map<String, Object> item = new HashMap<>();
-        item.put("name", name);
-        item.put("value", value);
-        item.put("color", color);
-        return item;
+
+    public List<ScanResult> getRecentFailedScans() {
+        return scanResultRepository.findRecentFailedScans(PageRequest.of(0, 20));
     }
 }

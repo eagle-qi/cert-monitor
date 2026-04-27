@@ -24,44 +24,42 @@ public class CertController {
     @GetMapping
     public Map<String, Object> list(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Long assetId,
             @RequestParam(required = false) Integer riskLevel) {
-        
         PageRequest pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "validEnd"));
-        Page<SslCertInfo> certs = certService.list(pageable, riskLevel);
-        
+        Page<SslCertInfo> certs = certService.getCerts(assetId, riskLevel, pageable);
         Map<String, Object> result = new HashMap<>();
         result.put("total", certs.getTotalElements());
         result.put("page", page);
         result.put("size", size);
         result.put("list", certs.getContent());
-        
         return result;
     }
     
     @GetMapping("/{id}")
     public SslCertInfo getById(@PathVariable Long id) {
-        return certService.getById(id);
+        return certService.getCerts(id, null, PageRequest.of(0, 1)).getContent().stream().findFirst().orElse(null);
     }
     
     @GetMapping("/asset/{assetId}")
     public SslCertInfo getByAssetId(@PathVariable Long assetId) {
-        return certService.getLatestByAssetId(assetId).orElse(null);
+        return certService.getCertByAssetId(assetId);
     }
     
     @PostMapping("/scan/{assetId}")
-    public SslCertInfo scan(@PathVariable Long assetId) {
+    public Map<String, Object> scan(@PathVariable Long assetId) {
         return certService.scanCert(assetId);
     }
     
     @PostMapping("/scan-all")
     public Map<String, Object> scanAll() {
         long start = System.currentTimeMillis();
-        certService.scanAllCerts();
+        certService.scanAllEnabled();
         long duration = System.currentTimeMillis() - start;
-        
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
+        result.put("message", "全量证书扫描已启动");
         result.put("duration", duration);
         return result;
     }
@@ -76,13 +74,13 @@ public class CertController {
     
     @GetMapping("/stats")
     public Map<String, Object> getStats() {
-        return certService.getStats();
-    }
-    
-    @GetMapping("/risk-distribution")
-    public Map<String, Object> getRiskDistribution() {
         Map<String, Object> result = new HashMap<>();
-        result.put("data", certService.getRiskLevelStats());
+        result.put("riskDistribution", certService.getRiskDistribution());
+        result.put("total", certService.countByRiskLevel(null));
+        result.put("normal", certService.countByRiskLevel(0));
+        result.put("warning", certService.countByRiskLevel(1));
+        result.put("critical", certService.countByRiskLevel(2));
+        result.put("expired", certService.countByRiskLevel(3));
         return result;
     }
 }

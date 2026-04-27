@@ -15,6 +15,8 @@ public interface SslCertInfoRepository extends JpaRepository<SslCertInfo, Long> 
     
     Optional<SslCertInfo> findTopByAssetIdOrderByScanTimeDesc(Long assetId);
     
+    Page<SslCertInfo> findByAssetId(Long assetId, Pageable pageable);
+    
     List<SslCertInfo> findByAssetId(Long assetId);
     
     Page<SslCertInfo> findByRiskLevel(Integer riskLevel, Pageable pageable);
@@ -24,10 +26,15 @@ public interface SslCertInfoRepository extends JpaRepository<SslCertInfo, Long> 
     @Query("SELECT s FROM SslCertInfo s WHERE s.validEnd <= :date AND s.riskLevel >= 2")
     List<SslCertInfo> findExpiringBefore(LocalDateTime date);
     
+    List<SslCertInfo> findExpiringCerts(int days);
+    
     long countByRiskLevel(Integer riskLevel);
     
     @Query("SELECT COUNT(s) FROM SslCertInfo s WHERE s.riskLevel = 2 OR s.riskLevel = 3")
     long countHighRiskCerts();
     
     List<SslCertInfo> findByCertFingerprint(String fingerprint);
+    
+    @Query("SELECT s FROM SslCertInfo s WHERE s.riskLevel >= 1 ORDER BY s.riskLevel DESC, s.remainDays ASC")
+    List<SslCertInfo> findTopRiskCerts(Pageable pageable);
 }

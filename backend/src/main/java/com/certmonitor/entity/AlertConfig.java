@@ -13,13 +13,41 @@ public class AlertConfig {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(name = "alert_type", nullable = false, length = 20)
+    @Column(length = 100)
+    private String name;
+    
+    @Column(name = "alert_type", length = 50)
     private String alertType;
     
-    @Column(columnDefinition = "TEXT")
-    private String config;
+    @Column(name = "risk_levels", length = 50)
+    private String riskLevels;
     
+    @Column(nullable = false)
     private Integer enabled = 1;
+    
+    @Column(name = "email_enabled")
+    private Boolean emailEnabled = false;
+    
+    @Column(name = "email_to", length = 200)
+    private String emailTo;
+    
+    @Column(name = "webhook_enabled")
+    private Boolean webhookEnabled = false;
+    
+    @Column(name = "webhook_url", length = 500)
+    private String webhookUrl;
+    
+    @Column(name = "dingtalk_enabled")
+    private Boolean dingtalkEnabled = false;
+    
+    @Column(name = "dingtalk_webhook_url", length = 500)
+    private String dingtalkWebhookUrl;
+    
+    @Column(name = "wechat_enabled")
+    private Boolean wechatEnabled = false;
+    
+    @Column(name = "wechat_webhook_url", length = 500)
+    private String wechatWebhookUrl;
     
     @Column(name = "create_time")
     private LocalDateTime createTime;
@@ -36,5 +64,14 @@ public class AlertConfig {
     @PreUpdate
     protected void onUpdate() {
         updateTime = LocalDateTime.now();
+    }
+    
+    public boolean appliesToRiskLevel(Integer level) {
+        if (riskLevels == null || riskLevels.isEmpty()) return true;
+        if (level == null) return true;
+        for (String s : riskLevels.split(",")) {
+            if (s.trim().equals(String.valueOf(level))) return true;
+        }
+        return false;
     }
 }

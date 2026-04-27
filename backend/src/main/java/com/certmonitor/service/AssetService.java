@@ -10,6 +10,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -19,67 +20,64 @@ public class AssetService {
     private DomainAssetRepository domainAssetRepository;
 
     @Transactional
-    public DomainAsset createAsset(DomainAsset asset) {
-        if (asset.getStatus() == null) {
-            asset.setStatus(1); // 默认启用
-        }
-        if (asset.getCreateTime() == null) {
-            asset.setCreateTime(new java.util.Date());
+    public DomainAsset save(DomainAsset asset) {
+        if (asset.getId() == null) {
+            asset.setCreateTime(LocalDateTime.now());
+            asset.setUpdateTime(LocalDateTime.now());
+            if (asset.getStatus() == null) asset.setStatus(1);
+            if (asset.getIsWhitelist() == null) asset.setIsWhitelist(1);
+        } else {
+            asset.setUpdateTime(LocalDateTime.now());
         }
         return domainAssetRepository.save(asset);
     }
 
     @Transactional
-    public DomainAsset updateAsset(Long id, DomainAsset asset) {
+    public DomainAsset update(Long id, DomainAsset asset) {
         DomainAsset existing = domainAssetRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("资产不存在"));
         existing.setUrl(asset.getUrl());
         existing.setProtocol(asset.getProtocol());
+        existing.setDomain(asset.getDomain());
         existing.setBusinessGroup(asset.getBusinessGroup());
         existing.setOwner(asset.getOwner());
         existing.setTags(asset.getTags());
         existing.setIsWhitelist(asset.getIsWhitelist());
         existing.setStatus(asset.getStatus());
         existing.setDescription(asset.getDescription());
+        existing.setUpdateTime(LocalDateTime.now());
         return domainAssetRepository.save(existing);
     }
 
-    public Page<DomainAsset> getAssets(String businessGroup, Integer status, String search, Pageable pageable) {
+    public Page<DomainAsset> list(PageRequest pageRequest, String businessGroup, Integer status) {
         if (businessGroup != null && !businessGroup.isEmpty()) {
-            return domainAssetRepository.findByBusinessGroup(businessGroup, pageable);
+            return domainAssetRepository.findByBusinessGroup(businessGroup, pageRequest);
         }
         if (status != null) {
-            return domainAssetRepository.findByStatusAndIsWhitelist(status, 0, pageable);
+            return domainAssetRepository.findByStatus(status, pageRequest);
         }
-        if (search != null && !search.isEmpty()) {
-            return domainAssetRepository.findByUrlContaining(search, pageable);
-        }
-        return domainAssetRepository.findAll(pageable);
+        return domainAssetRepository.findAll(pageRequest);
     }
 
-    public DomainAsset getAsset(Long id) {
+    public DomainAsset getById(Long id) {
         return domainAssetRepository.findById(id).orElse(null);
     }
 
     @Transactional
-    public void deleteAsset(Long id) {
+    public void delete(Long id) {
         domainAssetRepository.deleteById(id);
     }
 
     @Transactional
-    public void batchCreateAssets(List<DomainAsset> assets) {
+    public List<DomainAsset> batchSave(List<DomainAsset> assets) {
         for (DomainAsset asset : assets) {
-            if (asset.getStatus() == null) {
-                asset.setStatus(1);
-            }
-            if (asset.getCreateTime() == null) {
-                asset.setCreateTime(new java.util.Date());
-            }
+            if (asset.getStatus() == null) asset.setStatus(1);
+            if (asset.getIsWhitelist() == null) asset.setIsWhitelist(1);
         }
-        domainAssetRepository.saveAll(assets);
+        return domainAssetRepository.saveAll(assets);
     }
 
-    public List<DomainAsset> getEnabledAssets() {
+    public List<DomainAsset> listEnabled() {
         return domainAssetRepository.findByStatus(1);
     }
 
@@ -91,20 +89,16 @@ public class AssetService {
         return domainAssetRepository.findDistinctBusinessGroups();
     }
 
-    public long getTotalCount() {
-        return domainAssetRepository.count();
-    }
-
-    public long getEnabledCount() {
+    public long countEnabled() {
         return domainAssetRepository.countByStatus(1);
     }
 
-    public long getDisabledCount() {
-        return domainAssetRepository.countByStatus(0);
+    public long countTotal() {
+        return domainAssetRepository.count();
     }
 
-    public long getWhitelistCount() {
-        return domainAssetRepository.countWhitelistAssets();
+    public long countDisabled() {
+        return domainAssetRepository.countByStatus(0);
     }
 
     @Transactional
@@ -112,6 +106,7 @@ public class AssetService {
         DomainAsset asset = domainAssetRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("资产不存在"));
         asset.setStatus(asset.getStatus() == 1 ? 0 : 1);
+        asset.setUpdateTime(LocalDateTime.now());
         domainAssetRepository.save(asset);
     }
 }

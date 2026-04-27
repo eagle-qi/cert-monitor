@@ -13,6 +13,8 @@ public interface DomainAssetRepository extends JpaRepository<DomainAsset, Long> 
     
     List<DomainAsset> findByStatus(Integer status);
     
+    Page<DomainAsset> findByStatus(Integer status, Pageable pageable);
+    
     List<DomainAsset> findByIsWhitelist(Integer isWhitelist);
     
     Page<DomainAsset> findByStatusAndIsWhitelist(Integer status, Integer isWhitelist, Pageable pageable);

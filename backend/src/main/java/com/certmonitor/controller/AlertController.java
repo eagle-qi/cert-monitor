@@ -28,10 +28,9 @@ public class AlertController {
     public Map<String, Object> listRecords(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String alertType,
-            @RequestParam(required = false) Integer alertStatus) {
-        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "alertTime"));
-        Page<AlertRecord> records = alertService.getAlertRecords(alertType, alertStatus, pageable);
+            @RequestParam(required = false) Integer isRead) {
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "sendTime"));
+        Page<AlertRecord> records = alertService.list(pageable, isRead);
         Map<String, Object> result = new HashMap<>();
         result.put("total", records.getTotalElements());
         result.put("page", page);
@@ -45,9 +44,9 @@ public class AlertController {
         return alertService.getAlertStats();
     }
 
-    @PutMapping("/records/read")
-    public Map<String, Object> markAsRead(@RequestBody List<Long> ids) {
-        alertService.markAsRead(ids);
+    @PutMapping("/records/read/{id}")
+    public Map<String, Object> markAsRead(@PathVariable Long id) {
+        alertService.markAsRead(id);
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         return result;
@@ -61,43 +60,24 @@ public class AlertController {
         return result;
     }
 
-    @DeleteMapping("/records/{id}")
-    public Map<String, Object> deleteRecord(@PathVariable Long id) {
-        alertService.deleteAlertRecord(id);
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", true);
-        return result;
-    }
-
     @GetMapping("/config")
-    public Map<String, Object> getConfigs(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        Page<AlertConfig> configs = alertService.getAlertConfigs(page - 1, size);
-        Map<String, Object> result = new HashMap<>();
-        result.put("total", configs.getTotalElements());
-        result.put("list", configs.getContent());
-        return result;
+    public List<AlertConfig> getConfigs() {
+        return alertService.getConfigs();
     }
 
     @GetMapping("/config/{id}")
     public AlertConfig getConfig(@PathVariable Long id) {
-        return alertService.getAlertConfig(id);
+        return alertService.getConfigByType(null);
     }
 
     @PostMapping("/config")
     public AlertConfig createConfig(@RequestBody AlertConfig config) {
-        return alertService.createAlertConfig(config);
-    }
-
-    @PutMapping("/config/{id}")
-    public AlertConfig updateConfig(@PathVariable Long id, @RequestBody AlertConfig config) {
-        return alertService.updateAlertConfig(id, config);
+        return alertService.saveConfig(config);
     }
 
     @DeleteMapping("/config/{id}")
     public Map<String, Object> deleteConfig(@PathVariable Long id) {
-        alertService.deleteAlertConfig(id);
+        alertService.deleteConfig(id);
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         return result;
