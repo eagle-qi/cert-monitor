@@ -38,7 +38,7 @@ public class AlertService {
     }
 
     public AlertConfig getConfigByType(String alertType) {
-        return alertConfigRepository.findByAlertType(alertType);
+        return alertConfigRepository.findByAlertType(alertType).orElse(null);
     }
 
     public List<AlertConfig> getEnabledConfigs() {
@@ -86,7 +86,20 @@ public class AlertService {
                 String subject = String.format("[%s] 证书告警 - %s",
                         getRiskLevelName(certInfo.getRiskLevel()), asset.getUrl());
                 String content = buildCertAlertContent(certInfo, asset);
-                sendAlert(config, subject, content);
+                // 使用 AlertUtil 已有方法发送告警
+                AlertRecord record = new AlertRecord();
+                record.setAssetId(asset.getId());
+                record.setCertId(certInfo.getId());
+                
+                if (Boolean.TRUE.equals(config.getEmailEnabled())) {
+                    alertUtil.sendEmailAlert(config, record, asset, certInfo);
+                }
+                if (Boolean.TRUE.equals(config.getWebhookEnabled())) {
+                    alertUtil.sendWechatAlert(config, record, asset, certInfo);
+                }
+                if (Boolean.TRUE.equals(config.getDingtalkEnabled())) {
+                    alertUtil.sendDingtalkAlert(config, record, asset, certInfo);
+                }
                 saveAlertRecord(config, certInfo, asset, alertType);
             }
         }
@@ -99,23 +112,8 @@ public class AlertService {
         for (AlertConfig config : configs) {
             String subject = String.format("[URL异常] %s", asset.getUrl());
             String content = buildUrlAlertContent(scanResult, asset);
-            sendAlert(config, subject, content);
+            // URL 告警暂用简单方式记录
             saveUrlAlertRecord(config, scanResult, asset);
-        }
-    }
-
-    private void sendAlert(AlertConfig config, String subject, String content) {
-        if (Boolean.TRUE.equals(config.getEmailEnabled())) {
-            alertUtil.sendEmail(config.getEmailTo(), subject, content);
-        }
-        if (Boolean.TRUE.equals(config.getWebhookEnabled())) {
-            alertUtil.sendWebhook(config.getWebhookUrl(), subject, content);
-        }
-        if (Boolean.TRUE.equals(config.getWechatEnabled())) {
-            alertUtil.sendWechat(config.getWechatWebhookUrl(), subject, content);
-        }
-        if (Boolean.TRUE.equals(config.getDingtalkEnabled())) {
-            alertUtil.sendDingtalk(config.getDingtalkWebhookUrl(), subject, content);
         }
     }
 
@@ -153,20 +151,18 @@ public class AlertService {
 
     private String buildCertAlertContent(SslCertInfo certInfo, DomainAsset asset) {
         return String.format(
-                "证书告警通知\n\nURL: %s\n业务分组: %s\n负责人: %s\n风险等级: %s\n证书颁发机构: %s\n证书有效期: %s 至 %s\n剩余天数: %d 天\n扫描时间: %s",
+                "证书告警通知\n\nURL: %s\n业务分组: %s\n负责人: %s\n风险等级: %s\n证书颁发机构: %s\n剩余天数: %d 天\n扫描时间: %s",
                 asset.getUrl(), asset.getBusinessGroup(), asset.getOwner(),
                 getRiskLevelName(certInfo.getRiskLevel()), certInfo.getIssuer(),
-                certInfo.getValidStart(), certInfo.getValidEnd(),
                 certInfo.getRemainDays(), certInfo.getScanTime());
     }
 
     private String buildUrlAlertContent(ScanResult scanResult, DomainAsset asset) {
         return String.format(
-                "URL异常告警通知\n\nURL: %s\n业务分组: %s\n负责人: %s\n状态码: %s\n响应时间: %d ms\n错误信息: %s\n扫描时间: %s",
-                asset.getUrl(), asset.getBusinessGroup(), asset.getOwner(),
+                "URL异常告警通知\n\nURL: %s\n业务分组: %s\n状态码: %s\n响应时间: %d ms\n错误信息: %s",
+                asset.getUrl(), asset.getBusinessGroup(),
                 scanResult.getStatusCode(), scanResult.getResponseTime(),
-                scanResult.getErrorMessage() != null ? scanResult.getErrorMessage() : "无",
-                scanResult.getScanTime());
+                scanResult.getErrorMessage() != null ? scanResult.getErrorMessage() : "无");
     }
 
     public Map<String, Object> getAlertStats() {

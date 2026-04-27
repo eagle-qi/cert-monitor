@@ -37,7 +37,7 @@ public class CertService {
     }
 
     public SslCertInfo getCertByAssetId(Long assetId) {
-        return sslCertInfoRepository.findTopByAssetIdOrderByScanTimeDesc(assetId);
+        return sslCertInfoRepository.findTopByAssetIdOrderByScanTimeDesc(assetId).orElse(null);
     }
 
     public Map<String, Object> scanCert(Long assetId) {

@@ -39,7 +39,7 @@ public class ScanService {
     public Map<String, Object> scanAsset(Long assetId) {
         DomainAsset asset = domainAssetRepository.findById(assetId).orElse(null);
         if (asset == null) throw new RuntimeException("资产不存在");
-        ScanResult result = urlScanUtil.scanUrl(asset.getUrl());
+        ScanResult result = urlScanUtil.scanUrl(asset.getUrl(), 5000);
         result.setAssetId(asset.getId());
         result.setScanTime(LocalDateTime.now());
         scanResultRepository.save(result);
