@@ -6,6 +6,8 @@ import org.springframework.stereotype.Component;
 
 import javax.net.ssl.*;
 import java.io.ByteArrayInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;

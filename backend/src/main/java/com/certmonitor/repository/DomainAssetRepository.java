@@ -26,4 +26,6 @@ public interface DomainAssetRepository extends JpaRepository<DomainAsset, Long> 
     
     @Query("SELECT COUNT(d) FROM DomainAsset d WHERE d.isWhitelist = 1")
     long countWhitelistAssets();
+
+    Page<DomainAsset> findByUrlContaining(String keyword, Pageable pageable);
 }
