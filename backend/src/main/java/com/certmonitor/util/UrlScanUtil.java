@@ -2,16 +2,16 @@ package com.certmonitor.util;
 
 import com.certmonitor.entity.ScanResult;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.hc.client5.http.classics.methods.HttpGet;
-import org.apache.hc.client5.http.config.RequestConfig;
-import org.apache.hc.client5.http.impl.classics.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
-import org.apache.hc.core5.util.Timeout;
 import org.springframework.stereotype.Component;
 
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.cert.X509Certificate;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,28 +19,26 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class UrlScanUtil {
     
-    private static final Map<String, Object> httpClients = new ConcurrentHashMap<>();
-    private static final int DEFAULT_TIMEOUT = 5000;
+    private static final Map<String, Long> lastScanTime = new ConcurrentHashMap<>();
+    private static final int MIN_SCAN_INTERVAL = 1000; // 最小扫描间隔 1秒
     
-    /**
-     * 获取 HttpClient
-     */
-    private static Object getHttpClient(String key, int timeout) {
-        return httpClients.computeIfAbsent(key, k -> {
-            PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
-            cm.setMaxTotal(100);
-            cm.setDefaultMaxPerRoute(20);
-            
-            RequestConfig requestConfig = RequestConfig.custom()
-                    .setConnectionRequestTimeout(Timeout.ofMilliseconds(timeout))
-                    .setResponseTimeout(Timeout.ofMilliseconds(timeout))
-                    .build();
-            
-            return HttpClients.custom()
-                    .setConnectionManager(cm)
-                    .setDefaultRequestConfig(requestConfig)
-                    .build();
-        });
+    static {
+        // 禁用 SSL 验证（用于证书扫描）
+        try {
+            TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() { return null; }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                }
+            };
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+            HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
+        } catch (Exception e) {
+            log.warn("SSL 验证配置失败: {}", e.getMessage());
+        }
     }
     
     /**
@@ -50,95 +48,66 @@ public class UrlScanUtil {
         ScanResult result = new ScanResult();
         long startTime = System.currentTimeMillis();
         
+        HttpURLConnection connection = null;
         try {
             URL url = new URL(urlStr);
             String protocol = url.getProtocol();
-            String host = url.getHost();
-            int port = url.getPort() != -1 ? url.getPort() : 
-                      (protocol.equals("https") ? 443 : 80);
             
-            if ("http".equalsIgnoreCase(protocol) || "https".equalsIgnoreCase(protocol)) {
-                return scanHttpUrl(urlStr, timeout, startTime);
-            } else {
+            if (!"http".equalsIgnoreCase(protocol) && !"https".equalsIgnoreCase(protocol)) {
                 result.setIsAccessible(0);
                 result.setErrorMessage("不支持的协议: " + protocol);
+                result.setResponseTime((int) (System.currentTimeMillis() - startTime));
+                return result;
             }
+            
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(timeout);
+            connection.setReadTimeout(timeout);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("User-Agent", "CertMonitor/1.0");
+            connection.setRequestProperty("Connection", "close");
+            
+            int responseCode = connection.getResponseCode();
+            int responseTime = (int) (System.currentTimeMillis() - startTime);
+            
+            result.setStatusCode(responseCode);
+            result.setResponseTime(responseTime);
+            result.setIsAccessible(responseCode >= 200 && responseCode < 400 ? 1 : 0);
+            
+            if (responseCode >= 400) {
+                result.setErrorMessage("HTTP " + responseCode);
+            }
+            
+        } catch (java.net.SocketTimeoutException e) {
+            result.setIsAccessible(0);
+            result.setErrorMessage("连接超时");
+            result.setResponseTime((int) (System.currentTimeMillis() - startTime));
+        } catch (java.net.ConnectException e) {
+            result.setIsAccessible(0);
+            result.setErrorMessage("连接被拒绝");
+            result.setResponseTime((int) (System.currentTimeMillis() - startTime));
+        } catch (java.net.UnknownHostException e) {
+            result.setIsAccessible(0);
+            result.setErrorMessage("DNS 解析失败");
+            result.setResponseTime((int) (System.currentTimeMillis() - startTime));
+        } catch (IOException e) {
+            result.setIsAccessible(0);
+            result.setErrorMessage("IO错误: " + e.getMessage());
+            result.setResponseTime((int) (System.currentTimeMillis() - startTime));
+            log.debug("扫描失败: {}, error: {}", urlStr, e.getMessage());
         } catch (Exception e) {
             result.setIsAccessible(0);
             result.setErrorMessage("扫描失败: " + e.getMessage());
+            result.setResponseTime((int) (System.currentTimeMillis() - startTime));
             log.error("扫描 URL 失败: {}, error: {}", urlStr, e.getMessage());
-        }
-        
-        result.setResponseTime((int) (System.currentTimeMillis() - startTime));
-        return result;
-    }
-    
-    /**
-     * 扫描 HTTP/HTTPS URL
-     */
-    private ScanResult scanHttpUrl(String urlStr, int timeout, long startTime) {
-        ScanResult result = new ScanResult();
-        
-        try {
-            org.apache.hc.client5.http.classics.methods.HttpGet request = 
-                    new HttpGet(urlStr);
-            request.setHeader("User-Agent", "CertMonitor/1.0");
-            request.setHeader("Connection", "close");
-            
-            var httpClient = getHttpClient("client_" + timeout, timeout);
-            var response = ((org.apache.hc.client5.http.impl.classics.CloseableHttpClient) httpClient)
-                    .execute(request);
-            
-            int statusCode = response.getCode();
-            long responseTime = System.currentTimeMillis() - startTime;
-            
-            result.setStatusCode(statusCode);
-            result.setResponseTime((int) responseTime);
-            result.setIsAccessible(statusCode >= 200 && statusCode < 400 ? 1 : 0);
-            
-            if (statusCode >= 400) {
-                result.setErrorMessage("HTTP " + statusCode);
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
             }
-            
-            response.close();
-            
-        } catch (org.apache.hc.client5.http.ClientProtocolException e) {
-            result.setIsAccessible(0);
-            result.setErrorMessage("协议错误: " + e.getMessage());
-            result.setResponseTime((int) (System.currentTimeMillis() - startTime));
-        } catch (org.apache.hc.core5.io.CloseIgnoredException e) {
-            // 忽略关闭异常
-            result.setIsAccessible(1);
-            result.setResponseTime((int) (System.currentTimeMillis() - startTime));
-        } catch (Exception e) {
-            result.setIsAccessible(0);
-            result.setErrorMessage("连接失败: " + getErrorType(e));
-            result.setResponseTime((int) (System.currentTimeMillis() - startTime));
-            log.debug("扫描失败: {}, error: {}", urlStr, e.getMessage());
         }
         
         return result;
-    }
-    
-    /**
-     * 获取错误类型
-     */
-    private String getErrorType(Exception e) {
-        String msg = e.getMessage();
-        if (msg == null) return "未知错误";
-        
-        if (msg.contains("ConnectTimeoutException") || msg.contains("timeout")) {
-            return "连接超时";
-        } else if (msg.contains("ConnectException")) {
-            return "连接被拒绝";
-        } else if (msg.contains("UnknownHostException")) {
-            return "DNS 解析失败";
-        } else if (msg.contains("SSLHandshakeException")) {
-            return "SSL 握手失败";
-        } else if (msg.contains("SocketTimeoutException")) {
-            return "读取超时";
-        }
-        return msg.length() > 100 ? msg.substring(0, 100) : msg;
     }
     
     /**

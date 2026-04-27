@@ -62,13 +62,6 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Apache HttpClient -->
-        <dependency>
-            <groupId>org.apache.httpcomponents.client5</groupId>
-            <artifactId>httpclient5</artifactId>
-            <version>5.2.1</version>
-        </dependency>
-
         <!-- EasyExcel for Excel export -->
         <dependency>
             <groupId>com.alibaba</groupId>
